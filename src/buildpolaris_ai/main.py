@@ -8,6 +8,7 @@ import sys
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 from uuid import uuid4
+from buildpolaris_ai.gateway.api import llm_test
 
 import structlog
 from fastapi import FastAPI, Depends
@@ -47,7 +48,7 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan
 )
-
+app.include_router(llm_test.router)
 # --- Dependency Injection ---
 # In production, this will return the real HttpBFFClient. 
 # For now, it returns the Mock. This is the ONLY place we change it.
