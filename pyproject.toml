@@ -1,0 +1,42 @@
+[project]
+name = "buildpolaris-ai"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Ali Mrhj", email = "mrhj26ali@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "apache-age-python>=0.0.7",
+    "asyncpg>=0.31.0",
+    "fastapi>=0.141.1",
+    "hiredis>=3.4.0",
+    "httpx>=0.28.1",
+    "langchain-anthropic>=1.5.4",
+    "langchain-core>=1.5.3",
+    "langchain-openai>=1.4.1",
+    "langgraph>=1.2.10",
+    "mcp>=2.0.0",
+    "opentelemetry-api>=1.44.0",
+    "opentelemetry-instrumentation-fastapi>=0.65b0",
+    "opentelemetry-sdk>=1.44.0",
+    "pgvector>=0.5.0",
+    "pydantic>=2.13.4",
+    "pydantic-settings>=2.14.2",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "ragas>=0.4.3",
+    "redis>=8.1.0",
+    "structlog>=26.1.0",
+    "tenacity>=9.1.4",
+    "uuid7>=0.1.0",
+    "uvicorn[standard]>=0.52.1",
+]
+
+[project.scripts]
+buildpolaris-ai = "buildpolaris_ai:main"
+
+[build-system]
+requires = ["uv_build>=0.12.2,<0.13.0"]
+build-backend = "uv_build"

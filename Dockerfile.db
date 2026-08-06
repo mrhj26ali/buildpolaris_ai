@@ -1,0 +1,24 @@
+# Use Debian-based Postgres 16 (much easier to install extensions than Alpine)
+FROM postgres:16-bookworm
+
+# Install pgvector (pre-compiled) and build dependencies for Apache AGE.
+# flex and bison are strictly required to compile the Cypher parser in AGE.
+RUN apt-get update && apt-get install -y \
+    postgresql-16-pgvector \
+    build-essential \
+    postgresql-server-dev-16 \
+    git \
+    cmake \
+    flex \
+    bison \
+    && rm -rf /var/lib/apt/lists/*
+
+# Clone and compile Apache AGE from source using the verified PG16 release branch
+RUN git clone --branch release/PG16/1.5.0 --depth 1 https://github.com/apache/age.git /tmp/age \
+    && cd /tmp/age \
+    && make install \
+    && cd / \
+    && rm -rf /tmp/age \
+    && apt-get purge -y build-essential postgresql-server-dev-16 git cmake flex bison \
+    && apt-get autoremove -y \
+    && apt-get clean
