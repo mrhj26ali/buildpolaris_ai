@@ -10,6 +10,7 @@ requires-python = ">=3.12"
 dependencies = [
     "apache-age-python>=0.0.7",
     "asyncpg>=0.31.0",
+    "faker>=40.36.0",
     "fastapi>=0.141.1",
     "hiredis>=3.4.0",
     "httpx>=0.28.1",
