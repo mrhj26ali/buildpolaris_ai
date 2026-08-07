@@ -1,14 +1,11 @@
 # src/buildpolaris_ai/main.py
-"""
-FastAPI application entry point for buildpolaris_ai.
-Handles dependency injection for the Hexagonal adapters.
-"""
+"""FastAPI application entry point for buildpolaris_ai.
+Handles dependency injection for the Hexagonal adapters."""
 import logging
 import sys
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 from uuid import uuid4
-from buildpolaris_ai.gateway.api import llm_test
 
 import structlog
 from fastapi import FastAPI, Depends
@@ -16,6 +13,8 @@ from fastapi import FastAPI, Depends
 from buildpolaris_ai.platform.bff_client import BFFClientProtocol
 from buildpolaris_ai.platform.bff_mock import MockBFFClient
 from buildpolaris_ai.platform.schemas import ActionApprovalGate, GateStatus, UserContext
+from buildpolaris_ai.gateway.api import llm_test
+from buildpolaris_ai.gateway.api import copilot_test
 
 # Configure structlog for production-grade JSON logging
 structlog.configure(
@@ -48,7 +47,10 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan
 )
+
 app.include_router(llm_test.router)
+app.include_router(copilot_test.router)
+
 # --- Dependency Injection ---
 # In production, this will return the real HttpBFFClient. 
 # For now, it returns the Mock. This is the ONLY place we change it.

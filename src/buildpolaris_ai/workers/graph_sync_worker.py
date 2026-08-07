@@ -21,45 +21,39 @@ DB_NAME = os.getenv("DB_NAME", "polaris_knowledge")
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
 
 async def generate_embedding(text: str) -> list[float]:
-    """Generate embedding using local Ollama model."""
     client = ollama.AsyncClient()
     response = await client.embeddings(model='nomic-embed-text', prompt=text)
     return response['embedding']
 
 async def process_event(pg_conn: asyncpg.Connection, vector_store: PgVectorAdapter, graph_store: AGEAdapter, msg_data: dict):
-    """Process a single CDC event with explicit transaction safety."""
     event_id_str = msg_data['event_id']
     doctype = msg_data['doctype']
     docname = msg_data['docname']
     
-    # FIX 1: Explicitly parse the string back to a native UUID object for asyncpg
     try:
         event_id = uuid.UUID(event_id_str)
     except ValueError:
         logger.error("Invalid UUID format", event_id=event_id_str)
         return
     
-    # Robustly parse the payload
     payload = msg_data['payload']
     if isinstance(payload, str):
         payload = json.loads(payload)
     if isinstance(payload, str):
         payload = json.loads(payload)
         
-    # 1. Generate Embedding (Outside the DB transaction to prevent connection timeouts)
+    # CRITICAL FIX: Include the docname in the embedded text!
+    # Without this, vector search cannot find documents by their specific ID.
     subject = payload.get('subject') or payload.get('title') or ''
     description = payload.get('description', '')
-    text_to_embed = f"{doctype}: {subject}. {description}"
+    text_to_embed = f"Document ID: {docname}. Type: {doctype}. Subject: {subject}. Description: {description}"
     
     embedding = await generate_embedding(text_to_embed)
     
-    # FIX 2: Wrap DB operations in an explicit transaction to catch silent rollbacks
     try:
         async with pg_conn.transaction():
-            # 2. Upsert to Vector Store
             await vector_store.upsert_embedding(str(event_id), embedding, payload)
             
-            # 3. Upsert to Graph Store
             graph_props = {
                 "project_id": payload.get("project_id", "N/A"),
                 "status": payload.get("status", "N/A")
@@ -77,14 +71,11 @@ async def main():
     pg_conn = await asyncpg.connect(user=DB_USER, password=DB_PASSWORD, host=DB_HOST, port=DB_PORT, database=DB_NAME)
     r = redis.from_url(REDIS_URL, decode_responses=True)
     
-    # CRITICAL: Load the AGE extension and set the search path
-    await pg_conn.execute('LOAD \'age\'; SET search_path = public, ag_catalog, "$user";')
+    await pg_conn.execute('LOAD \'age\'; SET search_path = ag_catalog, "$user", public;')
     
-    # Initialize Adapters
     vector_store = PgVectorAdapter(pg_conn)
     graph_store = AGEAdapter(pg_conn)
     
-    # Ensure tables/graphs are ready
     await vector_store.setup()
     
     logger.info("✅ Worker initialized. Listening to 'cdc_events' stream...")
@@ -93,7 +84,6 @@ async def main():
     try:
         while True:
             messages = await r.xread({"cdc_events": last_id}, count=10, block=1000)
-            
             if not messages:
                 continue
                 
