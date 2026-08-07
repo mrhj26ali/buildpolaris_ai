@@ -15,19 +15,21 @@ class OllamaProvider:
     def __init__(self, model: str = "qwen2.5:3b-instruct", host: str = "http://localhost:11434"):
         self.model = model
         
-        # Ollama exposes an OpenAI-compatible API specifically at the /v1 endpoint
         openai_client = AsyncOpenAI(
             base_url=f"{host}/v1",
-            api_key="ollama", # A dummy key is required by the OpenAI client, but Ollama ignores it
+            api_key="ollama", # Dummy key required by OpenAI client, ignored by Ollama
         )
         
-        # Patch the client with instructor for structured generation and automatic retries
-        self.client = instructor.from_openai(openai_client)
+        # CRITICAL FIX: Force JSON mode for local Ollama models. 
+        # This prevents crashes when the model outputs plain text instead of tool calls.
+        self.client = instructor.from_openai(
+            openai_client, 
+            mode=instructor.Mode.JSON
+        )
 
     async def structured_generate(self, prompt: str, response_model: Type[T], model: Optional[str] = None) -> T:
         target_model = model or self.model
         
-        # Use the standard OpenAI chat.completions.create method, which instructor has patched
         response = await self.client.chat.completions.create(
             model=target_model,
             messages=[{"role": "user", "content": prompt}],
