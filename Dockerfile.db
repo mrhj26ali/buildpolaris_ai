@@ -22,3 +22,8 @@ RUN git clone --branch release/PG16/1.5.0 --depth 1 https://github.com/apache/ag
     && apt-get purge -y build-essential postgresql-server-dev-16 git cmake flex bison \
     && apt-get autoremove -y \
     && apt-get clean
+
+# Bake the init script into the image so the container is self-initializing.
+# Required for testcontainers / standalone `docker run`; docker-compose also
+# mounts this same file, which simply takes precedence (no conflict).
+COPY init-db.sh /docker-entrypoint-initdb.d/init-db.sh
