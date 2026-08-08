@@ -9,7 +9,7 @@ import structlog
 from buildpolaris_ai.platform.retrieval.pgvector_adapter import PgVectorAdapter
 from buildpolaris_ai.platform.retrieval.age_adapter import AGEAdapter
 from buildpolaris_ai.platform.retrieval.citation_validator import CitationValidator, RAGResponse
-from buildpolaris_ai.platform.model_provider.ollama_adapter import OllamaProvider
+from buildpolaris_ai.platform.model_provider import get_model_provider
 
 logger = structlog.get_logger()
 router = APIRouter(prefix="/copilot", tags=["Copilot"])
@@ -103,7 +103,7 @@ Question: {req.question}
 """
     
     # 6. Generate structured response using Instructor
-    provider = OllamaProvider()
+    provider = get_model_provider()
     rag_response = await provider.structured_generate(prompt, RAGResponse)
     
     logger.info(f"RAG model response", rag_response=rag_response.model_dump())
