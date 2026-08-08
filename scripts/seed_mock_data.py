@@ -1,12 +1,17 @@
 # scripts/seed_mock_data.py
 import asyncio
-import asyncpg
 import json
-import random
-from datetime import datetime, timedelta
-from faker import Faker
-import uuid
 import os
+import random
+import re
+import uuid
+from datetime import date, datetime, timedelta
+from decimal import Decimal
+from typing import Any
+from uuid import UUID
+
+import asyncpg
+from faker import Faker
 
 # Initialize Faker with a seed for reproducible mock data
 fake = Faker()
@@ -19,9 +24,98 @@ DB_HOST = os.getenv("DB_HOST", "localhost")
 DB_PORT = os.getenv("DB_PORT", "5432")
 DB_NAME = os.getenv("DB_NAME", "polaris_knowledge")
 
-async def setup_relational_table(conn):
+_GRAPH_NAME = "polaris_knowledge_graph"
+_GRAPH_NAME_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_PROPERTY_KEY_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+_RESERVED_INPUT_KEYS = {"docname", "doctype"}
+_RESERVED_BUILD_KEYS = {"docname"}
+
+
+def _validate_identifier(value: str) -> str:
+    if not isinstance(value, str) or not _GRAPH_NAME_PATTERN.match(value):
+        raise ValueError(f"Unsafe or invalid identifier: {value!r}")
+    return value
+
+
+def _json_safe(value: Any) -> Any:
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+
+    if isinstance(value, Decimal):
+        return str(value)
+
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+
+    if isinstance(value, UUID):
+        return str(value)
+
+    if isinstance(value, dict):
+        return {str(k): _json_safe(v) for k, v in value.items()}
+
+    if isinstance(value, (list, tuple, set)):
+        return [_json_safe(item) for item in value]
+
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+
+    return str(value)
+
+
+def _to_graph_property(value: Any) -> Any:
+    normalized = _json_safe(value)
+    if isinstance(normalized, (dict, list)):
+        return json.dumps(normalized, ensure_ascii=False)
+    return normalized
+
+
+def _build_upsert_query(properties: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+    """
+    Build a parameterized AGE upsert query.
+
+    This mirrors the production adapter behavior so the seeder does not
+    reintroduce unsafe Cypher interpolation.
+    """
+    graph_name = _validate_identifier(_GRAPH_NAME)
+    set_clauses: list[str] = []
+    params: dict[str, Any] = {}
+    index = 0
+
+    for raw_key, raw_value in properties.items():
+        key = str(raw_key)
+
+        if key in _RESERVED_BUILD_KEYS:
+            continue
+
+        if not _PROPERTY_KEY_PATTERN.match(key):
+            print(f"Warning: skipping unsafe graph property key: {key}")
+            continue
+
+        param_name = f"prop_{index}"
+        index += 1
+        set_clauses.append(f"n.{key} = ${param_name}")
+        params[param_name] = _to_graph_property(raw_value)
+
+    if not set_clauses:
+        set_sql = "n.docname = $docname"
+    else:
+        set_sql = ", ".join(set_clauses)
+
+    query = f"""
+SELECT * FROM ag_catalog.cypher('{graph_name}', $$
+MERGE (n:Document {{docname: $docname}})
+SET {set_sql}
+RETURN n
+$$, $1::ag_catalog.agtype) AS (n ag_catalog.agtype);
+"""
+    return query, params
+
+
+async def setup_relational_table(conn: asyncpg.Connection) -> None:
     """Create the mock documents table if it doesn't exist and clear it."""
-    await conn.execute("""
+    await conn.execute(
+        """
         CREATE TABLE IF NOT EXISTS mock_erpnext_docs (
             id UUID PRIMARY KEY,
             doctype VARCHAR(50) NOT NULL,
@@ -30,30 +124,35 @@ async def setup_relational_table(conn):
             payload JSONB NOT NULL,
             created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
         );
-    """)
-    # Clear existing data to ensure a clean slate
-    await conn.execute("TRUNCATE TABLE mock_erpnext_docs;")
-    print("✅ Table 'mock_erpnext_docs' is ready and cleared.")
+        """
+    )
 
-async def setup_graph(conn):
+    await conn.execute("TRUNCATE TABLE mock_erpnext_docs;")
+    print("Table 'mock_erpnext_docs' is ready and cleared.")
+
+
+async def setup_graph(conn: asyncpg.Connection) -> None:
     """Drop and recreate the Apache AGE graph to ensure a clean slate."""
+    await conn.execute("LOAD 'age';")
+    await conn.execute('SET search_path = ag_catalog, "$user", public;')
+
+    graph_name = _validate_identifier(_GRAPH_NAME)
+
     try:
-        # Fully qualify the drop_graph function
-        await conn.execute("SELECT * FROM ag_catalog.drop_graph('polaris_knowledge_graph', true);")
-        print("🗑️ Dropped existing graph 'polaris_knowledge_graph'.")
+        await conn.execute(f"SELECT * FROM ag_catalog.drop_graph('{graph_name}', true);")
+        print("Dropped existing graph.")
     except Exception:
-        # If it doesn't exist, it throws an error, which is fine.
         pass
-    
-    # Fully qualify the create_graph function
-    await conn.execute("SELECT * FROM ag_catalog.create_graph('polaris_knowledge_graph');")
-    print("✅ Created fresh graph 'polaris_knowledge_graph'.")
+
+    await conn.execute(f"SELECT * FROM ag_catalog.create_graph('{graph_name}');")
+    print("Created fresh graph.")
+
 
 def generate_mock_rfi(project_id: str, index: int) -> tuple[str, dict]:
     docname = f"RFI-{1000 + index}"
     has_cost = fake.boolean(chance_of_getting_true=20)
     has_schedule = fake.boolean(chance_of_getting_true=30)
-    
+
     payload = {
         "doctype": "RFI",
         "docname": docname,
@@ -66,12 +165,14 @@ def generate_mock_rfi(project_id: str, index: int) -> tuple[str, dict]:
         "cost_impact": has_cost,
         "schedule_impact": has_schedule,
         "sla_due": (datetime.now() + timedelta(days=random.randint(1, 7))).isoformat(),
-        "created_at": (datetime.now() - timedelta(days=random.randint(1, 30))).isoformat()
+        "created_at": (datetime.now() - timedelta(days=random.randint(1, 30))).isoformat(),
     }
     return docname, payload
 
+
 def generate_mock_daily_log(project_id: str, index: int) -> tuple[str, dict]:
     docname = f"DLOG-{2000 + index}"
+
     payload = {
         "doctype": "DailyLog",
         "docname": docname,
@@ -81,12 +182,14 @@ def generate_mock_daily_log(project_id: str, index: int) -> tuple[str, dict]:
         "weather": fake.random_element(elements=("Sunny", "Cloudy", "Rainy", "Windy")),
         "labor_hours": random.randint(20, 150),
         "delays": fake.sentence(nb_words=8) if fake.boolean(40) else "None",
-        "sync_status": "Synced"
+        "sync_status": "Synced",
     }
     return docname, payload
 
+
 def generate_mock_task(project_id: str, index: int) -> tuple[str, dict]:
     docname = f"TASK-{3000 + index}"
+
     payload = {
         "doctype": "Task",
         "docname": docname,
@@ -95,96 +198,123 @@ def generate_mock_task(project_id: str, index: int) -> tuple[str, dict]:
         "parent_task_id": None,
         "start_date": (datetime.now() - timedelta(days=random.randint(10, 20))).date().isoformat(),
         "end_date": (datetime.now() + timedelta(days=random.randint(1, 15))).date().isoformat(),
-        "status": fake.random_element(elements=("Open", "Working", "Completed", "Cancelled"))
+        "status": fake.random_element(elements=("Open", "Working", "Completed", "Cancelled")),
     }
     return docname, payload
 
-async def seed_age_graph(conn, doctype: str, docname: str, payload: dict):
-    """Insert a node into the Apache AGE graph."""
+
+async def seed_age_graph(
+    conn: asyncpg.Connection,
+    doctype: str,
+    docname: str,
+    payload: dict,
+) -> None:
+    """
+    Insert a node into the Apache AGE graph using parameterized Cypher.
+    """
     subject = payload.get("subject") or payload.get("title") or "N/A"
     status = payload.get("status") or "N/A"
-    project_id = payload.get("project_id")
-    
-    # Basic sanitization for Cypher injection (sufficient for local mock data)
-    safe_subject = str(subject).replace("'", "''")
-    safe_docname = str(docname).replace("'", "''")
-    
-    # Fully qualify cypher and agtype to completely avoid search_path issues
-    query = f"""
-        SELECT * FROM ag_catalog.cypher('polaris_knowledge_graph', $$
-            CREATE (n:Document {{
-                doctype: '{doctype}',
-                docname: '{safe_docname}',
-                project_id: '{project_id}',
-                subject: '{safe_subject}',
-                status: '{status}'
-            }})
-            RETURN n
-        $$) AS (n ag_catalog.agtype);
-    """
-    try:
-        await conn.execute(query)
-    except Exception as e:
-        print(f"⚠️ Warning: Could not insert into AGE graph for {docname}. Error: {e}")
+    project_id = payload.get("project_id") or "N/A"
 
-async def main():
-    print("🚀 Starting Mock Data Seeder...")
-    
-    # Connect to the database
+    clean_input = {
+        "project_id": project_id,
+        "status": status,
+        "subject": subject,
+    }
+    clean_properties = {
+        k: v
+        for k, v in clean_input.items()
+        if k not in _RESERVED_INPUT_KEYS
+    }
+
+    merged_properties: dict[str, Any] = {
+        "doctype": doctype,
+        **clean_properties,
+    }
+
+    query, property_params = _build_upsert_query(merged_properties)
+
+    params: dict[str, Any] = {
+        "docname": str(docname),
+    }
+    params.update(property_params)
+
+    serialized_params = json.dumps(_json_safe(params), ensure_ascii=False)
+
+    try:
+        await conn.fetch(query, serialized_params)
+    except Exception as e:
+        print(f"Warning: Could not insert into AGE graph for {docname}. Error: {e}")
+
+
+async def main() -> None:
+    print("Starting Mock Data Seeder...")
+
     conn = await asyncpg.connect(
         user=DB_USER,
         password=DB_PASSWORD,
         host=DB_HOST,
         port=DB_PORT,
-        database=DB_NAME
+        database=DB_NAME,
     )
-    print("✅ Connected to PostgreSQL.")
+    print("Connected to PostgreSQL.")
 
     try:
-        # 1. Setup Relational Table
         await setup_relational_table(conn)
-        
-        # 2. Setup Graph (Drop and Recreate for a clean slate)
         await setup_graph(conn)
-        
+
         project_id = "PROJ-ALPHA-001"
-        records_to_generate = 15 # Per doctype
-        
+        records_to_generate = 15
+
         doctypes = [
             ("RFI", generate_mock_rfi),
             ("DailyLog", generate_mock_daily_log),
-            ("Task", generate_mock_task)
+            ("Task", generate_mock_task),
         ]
-        
+
         for doctype, generator in doctypes:
-            print(f"\n📦 Generating {records_to_generate} {doctype} records...")
+            print(f"Generating {records_to_generate} {doctype} records...")
+
             for i in range(records_to_generate):
                 doc_id = str(uuid.uuid4())
                 docname, payload = generator(project_id, i)
-                
-                # 1. Insert into relational table
+
                 created_at_str = payload.get("created_at", datetime.now().isoformat())
                 created_at_dt = datetime.fromisoformat(created_at_str)
-                
-                await conn.execute("""
-                    INSERT INTO mock_erpnext_docs (id, doctype, docname, project_id, payload, created_at)
-                    VALUES ($1, $2, $3, $4, $5, $6)
-                """, doc_id, doctype, docname, project_id, json.dumps(payload), created_at_dt)
-                
-                # 2. Insert into Apache AGE graph
-                await seed_age_graph(conn, doctype, docname, payload)
-                
-            print(f"✅ Successfully seeded {records_to_generate} {doctype} records.")
 
-        print("\n🎉 Mock data seeding completed successfully!")
-        
-        # Verification query
+                await conn.execute(
+                    """
+                    INSERT INTO mock_erpnext_docs (
+                        id,
+                        doctype,
+                        docname,
+                        project_id,
+                        payload,
+                        created_at
+                    )
+                    VALUES ($1, $2, $3, $4, $5, $6)
+                    """,
+                    doc_id,
+                    doctype,
+                    docname,
+                    project_id,
+                    json.dumps(payload),
+                    created_at_dt,
+                )
+
+                await seed_age_graph(conn, doctype, docname, payload)
+
+            print(f"Successfully seeded {records_to_generate} {doctype} records.")
+
+        print("Mock data seeding completed successfully!")
+
         count = await conn.fetchval("SELECT COUNT(*) FROM mock_erpnext_docs")
-        print(f"📊 Total records in 'mock_erpnext_docs': {count}")
-        
+        print(f"Total records in 'mock_erpnext_docs': {count}")
+
     finally:
         await conn.close()
-        print("🔌 Database connection closed.")
+        print("Database connection closed.")
+
 
 if __name__ == "__main__":
     asyncio.run(main())
