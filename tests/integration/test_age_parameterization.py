@@ -55,6 +55,7 @@ async def test_parameterized_cypher_executes_against_real_age():
         await adapter.upsert_document_node(
             doctype="RFI",
             docname=malicious_docname,
+            tenant_id="TEST-TENANT",
             properties={
                 "project_id": "PROJ-SEC",
                 "status": "Open",
@@ -63,15 +64,15 @@ async def test_parameterized_cypher_executes_against_real_age():
         )
 
         count_query = f"""
-SELECT * FROM ag_catalog.cypher('{TEST_GRAPH_NAME}', $$
-MATCH (n:Document {{docname: $docname}})
-RETURN count(n) AS node_count
-$$, $1::ag_catalog.agtype) AS (node_count ag_catalog.agtype);
-"""
+    SELECT * FROM ag_catalog.cypher('{TEST_GRAPH_NAME}', $$
+    MATCH (n:Document {{docname: $docname, tenant_id: $tenant_id}})
+    RETURN count(n) AS node_count
+    $$, $1::ag_catalog.agtype) AS (node_count ag_catalog.agtype);
+    """
 
         rows = await conn.fetch(
             count_query,
-            json.dumps({"docname": malicious_docname}),
+            json.dumps({"docname": malicious_docname, "tenant_id": "TEST-TENANT"}),
         )
 
         assert rows, "Expected count query to return one row"
@@ -81,6 +82,7 @@ $$, $1::ag_catalog.agtype) AS (node_count ag_catalog.agtype);
 
         enriched = await adapter.enrich_with_graph_context(
             [malicious_docname],
+            tenant_id="TEST-TENANT",
             limit=10,
         )
 

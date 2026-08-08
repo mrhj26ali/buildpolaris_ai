@@ -18,7 +18,7 @@ _PROPERTY_KEY_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 # Keys that must not be accepted from caller-supplied properties because
 # the adapter controls them explicitly.
-_RESERVED_INPUT_KEYS = {"docname", "doctype"}
+_RESERVED_INPUT_KEYS = {"docname", "doctype", "tenant_id"}
 
 # Keys that should never be emitted as dynamic SET clauses inside the query.
 _RESERVED_BUILD_KEYS = {"docname"}
@@ -184,22 +184,23 @@ class AGEAdapter(GraphStoreProtocol):
             set_sql = ", ".join(set_clauses)
 
         query = f"""
-SELECT * FROM ag_catalog.cypher('{self._graph_name}', $$
-MERGE (n:Document {{docname: $docname}})
-SET {set_sql}
-RETURN n
-$$, $1::ag_catalog.agtype) AS (n ag_catalog.agtype);
-"""
+    SELECT * FROM ag_catalog.cypher('{self._graph_name}', $$
+    MERGE (n:Document {{docname: $docname, tenant_id: $tenant_id}})
+    SET {set_sql}
+    RETURN n
+    $$, $1::ag_catalog.agtype) AS (n ag_catalog.agtype);
+    """
         return query, params
 
     async def upsert_document_node(
         self,
         doctype: str,
         docname: str,
+        tenant_id: str,
         properties: dict[str, Any],
     ) -> None:
         """
-        Parameterized upsert of a Document node.
+        Parameterized upsert of a Document node with tenant scoping.
         """
         clean_input = properties or {}
         clean_properties = {
@@ -210,6 +211,7 @@ $$, $1::ag_catalog.agtype) AS (n ag_catalog.agtype);
 
         merged_properties: dict[str, Any] = {
             "doctype": doctype,
+            "tenant_id": str(tenant_id),
             **clean_properties,
         }
 
@@ -217,6 +219,7 @@ $$, $1::ag_catalog.agtype) AS (n ag_catalog.agtype);
 
         params: dict[str, Any] = {
             "docname": str(docname),
+            "tenant_id": str(tenant_id),
         }
         params.update(property_params)
 
@@ -227,6 +230,7 @@ $$, $1::ag_catalog.agtype) AS (n ag_catalog.agtype);
                 "AGE upsert failed",
                 doctype=doctype,
                 docname=docname,
+                tenant_id=tenant_id,
                 error=str(exc),
             )
             raise
@@ -234,6 +238,7 @@ $$, $1::ag_catalog.agtype) AS (n ag_catalog.agtype);
     async def enrich_with_graph_context(
         self,
         seed_docnames: list[str],
+        tenant_id: str,
         limit: int = 3,
     ) -> list[dict[str, Any]]:
         """
@@ -254,13 +259,16 @@ $$, $1::ag_catalog.agtype) AS (n ag_catalog.agtype);
 
         params: dict[str, Any] = {
             "docnames": [str(item) for item in seed_docnames],
+            "tenant_id": str(tenant_id),
         }
 
+        # CRITICAL: Both seed and related nodes MUST be filtered by tenant_id
         query = f"""
 SELECT * FROM ag_catalog.cypher('{self._graph_name}', $$
 MATCH (seed:Document)
-WHERE seed.docname IN $docnames
+WHERE seed.docname IN $docnames AND seed.tenant_id = $tenant_id
 OPTIONAL MATCH (seed)--(related:Document)
+WHERE related.tenant_id = $tenant_id
 RETURN seed.docname AS seed_doc,
        related.doctype AS related_type,
        related.docname AS related_doc,
