@@ -50,15 +50,25 @@ class RedisSettings(BaseModel):
 
 
 class ModelProviderSettings(BaseModel):
-    """Model provider selection.
+    """Model provider selection (Decision Log #6).
 
-    Consumed by the next branch (feat/model-provider-adapters). Declared
-    here now so provider selection becomes a config change, not a code change.
+    Provider is selected via provider_id string:
+      - Local:  "ollama/qwen2.5:3b-instruct"
+      - API:    "google/gemini-2.5-flash" (requires api_key = GOOGLE_API_KEY)
+
+    Changing the provider is a config change, not a code change.
     """
 
-    # e.g. "ollama/qwen2.5:3b-instruct" or "google/gemini-2.5-flash"
+    # Format: "provider/model" — e.g., "ollama/qwen2.5:3b-instruct" or "google/gemini-2.5-flash"
     provider_id: str = "ollama/qwen2.5:3b-instruct"
+
+    # API key for hosted providers (e.g., GOOGLE_API_KEY for Gemini).
+    # Not needed for local Ollama.
     api_key: SecretStr | None = None
+
+    # Optional base URL override (e.g., custom Ollama host at a non-default port).
+    # Leave as None to use the provider's default.
+    base_url: str | None = None
 
 
 class Settings(BaseSettings):

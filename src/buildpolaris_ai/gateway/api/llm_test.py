@@ -1,7 +1,7 @@
 # src/buildpolaris_ai/gateway/api/llm_test.py
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
-from buildpolaris_ai.platform.model_provider.ollama_adapter import OllamaProvider
+from buildpolaris_ai.platform.model_provider import get_model_provider
 
 router = APIRouter(prefix="/test", tags=["Testing"])
 
@@ -16,7 +16,7 @@ async def test_llm_structured():
     """
     Test endpoint to verify Ollama structured output via Instructor.
     """
-    provider = OllamaProvider()
+    provider = get_model_provider()
     prompt = "Draft an RFI about a discrepancy in the concrete mix design on site. It will cause a 2-day delay but no extra cost."
     result = await provider.structured_generate(prompt, TestRFIDraft)
     return result.model_dump()
