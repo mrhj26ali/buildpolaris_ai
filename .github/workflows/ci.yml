@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  quality:
+    name: Lint & Static Security Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Ruff (lint)
+        run: uv run ruff check src tests scripts
+
+      - name: Bandit (SAST)
+        # B105/B106/B107 skipped: pydantic-settings dev defaults are not real secrets;
+        # production values come from environment variables.
+        run: uv run bandit -r src/buildpolaris_ai -ll -ii --skip B105,B106,B107
+
+  test-fast:
+    name: Unit & Security Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Run unit + security tests with coverage
+        run: uv run pytest -m "unit or security" -v --cov --cov-report=term-missing
+
+  test-integration:
+    name: Integration Tests (Postgres + AGE + pgvector)
+    runs-on: ubuntu-latest
+    needs: test-fast
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build & start database container
+        run: docker compose up -d --build polaris-db
+
+      - name: Wait for database to be healthy
+        run: |
+          for i in $(seq 1 60); do
+            STATE=$(docker inspect --format='{{.State.Health.Status}}' polaris_ai_db 2>/dev/null || echo "starting")
+            if [ "$STATE" = "healthy" ]; then
+              echo "Database is healthy"
+              exit 0
+            fi
+            echo "Waiting for database... ($STATE)"
+            sleep 5
+          done
+          echo "Database did not become healthy in time"
+          exit 1
+
+      - uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Run integration tests
+        run: uv run pytest -m "integration" -v
