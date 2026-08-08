@@ -29,40 +29,43 @@ async def process_event(pg_conn: asyncpg.Connection, vector_store: PgVectorAdapt
     event_id_str = msg_data['event_id']
     doctype = msg_data['doctype']
     docname = msg_data['docname']
-    
+    # CRITICAL: Extract tenant_id to enforce isolation (NFR-AI-3)
+    tenant_id = msg_data.get('tenant_id')
+    if not tenant_id:
+        logger.error("CDC event missing tenant_id, dropping event", event_id=event_id_str)
+        return
+
     try:
         event_id = uuid.UUID(event_id_str)
     except ValueError:
         logger.error("Invalid UUID format", event_id=event_id_str)
         return
-    
+
     payload = msg_data['payload']
     if isinstance(payload, str):
         payload = json.loads(payload)
-    if isinstance(payload, str):
-        payload = json.loads(payload)
-        
+
     # CRITICAL FIX: Include the docname in the embedded text!
     # Without this, vector search cannot find documents by their specific ID.
     subject = payload.get('subject') or payload.get('title') or ''
     description = payload.get('description', '')
     text_to_embed = f"Document ID: {docname}. Type: {doctype}. Subject: {subject}. Description: {description}"
-    
+
     embedding = await generate_embedding(text_to_embed)
-    
+
     try:
         async with pg_conn.transaction():
-            await vector_store.upsert_embedding(str(event_id), embedding, payload)
-            
+            await vector_store.upsert_embedding(str(event_id), tenant_id, embedding, payload)
+
             graph_props = {
                 "project_id": payload.get("project_id", "N/A"),
                 "status": payload.get("status", "N/A")
             }
-            await graph_store.upsert_document_node(doctype, docname, graph_props)
-            
-        logger.info("Processed CDC Event", event_id=str(event_id), doctype=doctype, docname=docname)
+            await graph_store.upsert_document_node(doctype, docname, tenant_id, graph_props)
+
+            logger.info("Processed CDC Event", event_id=str(event_id), tenant_id=tenant_id, doctype=doctype, docname=docname)
     except Exception as e:
-        logger.error("Database transaction failed", event_id=str(event_id), error=str(e))
+        logger.error("Database transaction failed", event_id=str(event_id), tenant_id=tenant_id, error=str(e))
         raise
 
 async def main():

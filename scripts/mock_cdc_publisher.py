@@ -23,19 +23,20 @@ async def main():
     print("🗑️ Cleared 'cdc_events' Redis Stream.")
 
     try:
-        rows = await pg_conn.fetch("SELECT id, doctype, docname, payload FROM mock_erpnext_docs")
+        rows = await pg_conn.fetch("SELECT id, tenant_id, doctype, docname, payload FROM mock_erpnext_docs")
         print(f"📦 Found {len(rows)} documents to publish to the event bus.")
-        
+
         for row in rows:
             event = {
                 "event_id": str(row['id']),
+                "tenant_id": row['tenant_id'],
                 "event_type": "created",
                 "doctype": row['doctype'],
                 "docname": row['docname'],
                 "payload": json.dumps(row['payload'])
             }
             await r.xadd("cdc_events", event)
-            
+
         print(f"✅ Successfully published {len(rows)} events to Redis Stream 'cdc_events'.")
     finally:
         await pg_conn.close()
