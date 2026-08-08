@@ -1,7 +1,6 @@
 # scripts/seed_mock_data.py
 import asyncio
 import json
-import os
 import random
 import re
 import uuid
@@ -13,14 +12,10 @@ from uuid import UUID
 import asyncpg
 from faker import Faker
 
+from buildpolaris_ai.platform.config import get_settings
+
 fake = Faker()
 Faker.seed(42)
-
-DB_USER = os.getenv("DB_USER", "polaris_ai")
-DB_PASSWORD = os.getenv("DB_PASSWORD", "polaris_ai_dev_password")
-DB_HOST = os.getenv("DB_HOST", "localhost")
-DB_PORT = os.getenv("DB_PORT", "5432")
-DB_NAME = os.getenv("DB_NAME", "polaris_knowledge")
 
 _GRAPH_NAME = "polaris_knowledge_graph"
 _GRAPH_NAME_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -213,9 +208,9 @@ async def seed_age_graph(
 
 async def main() -> None:
     print("Starting Mock Data Seeder...")
-    conn = await asyncpg.connect(
-        user=DB_USER, password=DB_PASSWORD, host=DB_HOST, port=DB_PORT, database=DB_NAME,
-    )
+    settings = get_settings()
+
+    conn = await asyncpg.connect(**settings.database.connect_kwargs())
     print("Connected to PostgreSQL.")
 
     try:
