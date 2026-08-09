@@ -1,17 +1,14 @@
 # scripts/mock_cdc_publisher.py
 import asyncio
 import json
-
 import asyncpg
 import redis.asyncio as redis
-
 from buildpolaris_ai.platform.config import get_settings
 
 
 async def main():
     print("Starting Mock CDC Publisher (Simulating BFF)...")
     settings = get_settings()
-
     pg_conn = await asyncpg.connect(**settings.database.connect_kwargs())
     r = redis.from_url(settings.redis.url, decode_responses=True)
 
@@ -20,17 +17,25 @@ async def main():
     print("Cleared 'cdc_events' Redis Stream.")
 
     try:
-        rows = await pg_conn.fetch("SELECT id, tenant_id, doctype, docname, payload FROM mock_erpnext_docs")
+        rows = await pg_conn.fetch(
+            "SELECT id, tenant_id, doctype, docname, payload FROM mock_erpnext_docs"
+        )
         print(f"Found {len(rows)} documents to publish to the event bus.")
 
         for row in rows:
+            payload = row['payload']
+            # asyncpg returns jsonb as a JSON string by default. Normalize to a
+            # dict BEFORE serializing so we never double-encode the payload.
+            if isinstance(payload, str):
+                payload = json.loads(payload)
+
             event = {
                 "event_id": str(row['id']),
                 "tenant_id": row['tenant_id'],
                 "event_type": "created",
                 "doctype": row['doctype'],
                 "docname": row['docname'],
-                "payload": json.dumps(row['payload']),
+                "payload": json.dumps(payload),
             }
             await r.xadd("cdc_events", event)
 

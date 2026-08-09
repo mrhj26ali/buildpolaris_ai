@@ -1,13 +1,11 @@
-# src/buildpolaris_ai/workers/graph_sync_worker.py
+﻿# src/buildpolaris_ai/workers/graph_sync_worker.py
 import asyncio
 import json
 import uuid
-
 import asyncpg
 import ollama
 import redis.asyncio as redis
 import structlog
-
 from buildpolaris_ai.platform.config import get_settings
 from buildpolaris_ai.platform.retrieval.pgvector_adapter import PgVectorAdapter
 from buildpolaris_ai.platform.retrieval.age_adapter import AGEAdapter
@@ -21,6 +19,42 @@ async def generate_embedding(text: str) -> list[float]:
     return response['embedding']
 
 
+def _decode_payload(raw):
+    """Decode a CDC payload to a dict, tolerating single OR double JSON encoding."""
+    payload = raw
+    while isinstance(payload, str):
+        payload = json.loads(payload)
+    return payload
+
+
+def _build_embedding_text(doctype: str, docname: str, payload: dict) -> str:
+    """Build meaningful embedding text for any doctype."""
+    parts = [f"Document ID: {docname}. Type: {doctype}."]
+
+    if doctype == "RFI":
+        parts.append(f"Subject: {payload.get('subject', '')}. {payload.get('description', '')}")
+    elif doctype == "Task":
+        parts.append(f"Title: {payload.get('title', '')}. {payload.get('description', '')}")
+    elif doctype == "DailyLog":
+        parts.append(f"Weather: {payload.get('weather', '')}. Delays: {payload.get('delays', '')}. {payload.get('description', '')}")
+    elif doctype == "PunchListItem":
+        parts.append(f"Status: {payload.get('status', '')}. Due: {payload.get('due_date', '')}. {payload.get('description', '')}")
+    elif doctype == "IncidentReport":
+        parts.append(f"OSHA: {payload.get('osha_classification', '')}. {payload.get('description', '')}")
+    elif doctype == "SOVLine":
+        parts.append(f"Budget: {payload.get('approved_budget', 0)}. Committed: {payload.get('committed_cost', 0)}. {payload.get('description', '')}")
+    elif doctype == "ChangeEvent":
+        parts.append(f"Category: {payload.get('category', '')}. Reason: {payload.get('outcome_reason', '')}. {payload.get('description', '')}")
+    elif doctype == "ContractClause":
+        parts.append(f"Type: {payload.get('clause_type', '')}. Risk: {payload.get('risk_flag', '')}. {payload.get('description', '')}")
+    elif doctype == "ActionApprovalGate":
+        parts.append(f"Ref: {payload.get('ref_doctype', '')}. Status: {payload.get('status', '')}. {payload.get('description', '')}")
+    else:
+        parts.append(payload.get('description', ''))
+
+    return " ".join(parts)
+
+
 async def process_event(
     pg_conn: asyncpg.Connection,
     vector_store: PgVectorAdapter,
@@ -31,7 +65,6 @@ async def process_event(
     doctype = msg_data['doctype']
     docname = msg_data['docname']
 
-    # CRITICAL: Extract tenant_id to enforce isolation (NFR-AI-3)
     tenant_id = msg_data.get('tenant_id')
     if not tenant_id:
         logger.error("CDC event missing tenant_id, dropping event", event_id=event_id_str)
@@ -43,13 +76,9 @@ async def process_event(
         logger.error("Invalid UUID format", event_id=event_id_str)
         return
 
-    payload = msg_data['payload']
-    if isinstance(payload, str):
-        payload = json.loads(payload)
+    payload = _decode_payload(msg_data['payload'])
 
-    subject = payload.get('subject') or payload.get('title') or ''
-    description = payload.get('description', '')
-    text_to_embed = f"Document ID: {docname}. Type: {doctype}. Subject: {subject}. Description: {description}"
+    text_to_embed = _build_embedding_text(doctype, docname, payload)
     embedding = await generate_embedding(text_to_embed)
 
     try:
@@ -75,7 +104,6 @@ async def process_event(
 async def main():
     logger.info("Starting CDC Sync Worker...")
     settings = get_settings()
-
     pg_conn = await asyncpg.connect(**settings.database.connect_kwargs())
     r = redis.from_url(settings.redis.url, decode_responses=True)
     await pg_conn.execute('LOAD \'age\'; SET search_path = ag_catalog, "$user", public;')

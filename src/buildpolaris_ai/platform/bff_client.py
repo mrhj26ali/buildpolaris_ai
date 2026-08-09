@@ -1,23 +1,25 @@
-# src/buildpolaris_ai/platform/bff_client.py
+﻿# src/buildpolaris_ai/platform/bff_client.py
 """
 Hexagonal Port for communicating with buildpolaris_bff.
 We use typing.Protocol for structural subtyping (duck typing).
 """
 import logging
 from typing import Protocol, runtime_checkable
-
-from buildpolaris_ai.platform.schemas import ActionApprovalGate, GateStatus, UserContext
+from buildpolaris_ai.platform.schemas import (
+    ActionApprovalGate, GateStatus, PaginatedResponse, UserContext,
+)
 
 logger = logging.getLogger(__name__)
+
 
 @runtime_checkable
 class BFFClientProtocol(Protocol):
     """
     The strict contract for interacting with the BFF.
-    buildpolaris_ai holds NO ERPNext credentials. It only holds credentials 
+    buildpolaris_ai holds NO ERPNext credentials. It only holds credentials
     scoped to the BFF's api/agent_writes.py.
     """
-    
+
     async def submit_approval_gate(self, gate: ActionApprovalGate, user_ctx: UserContext) -> str:
         """Submits a proposed write action to the BFF for human approval. Returns gate_id."""
         ...
@@ -28,4 +30,14 @@ class BFFClientProtocol(Protocol):
 
     async def execute_approved_gate(self, gate_id: str) -> dict:
         """Tells the BFF to execute the mutation now that it's approved."""
+        ...
+
+    async def list_documents(
+        self,
+        doctype: str,
+        tenant_id: str,
+        page: int = 1,
+        page_size: int = 20,
+    ) -> PaginatedResponse:
+        """Paginated document listing from the BFF."""
         ...
