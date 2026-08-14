@@ -1,29 +1,28 @@
-# Use Debian-based Postgres 16 (much easier to install extensions than Alpine)
-FROM postgres:16-bookworm
+﻿# Postgres image with pgvector + Apache AGE pre-installed (ARCH v2.1 Â§6.3,
+# ERD v2.1 Â§1). Built from the postgres official image rather than a
+# third-party AGE image so the Postgres version is under our control.
+FROM postgres:16
 
-# Install pgvector (pre-compiled) and build dependencies for Apache AGE.
-# flex and bison are strictly required to compile the Cypher parser in AGE.
-RUN apt-get update && apt-get install -y \
-    postgresql-16-pgvector \
-    build-essential \
-    postgresql-server-dev-16 \
-    git \
-    cmake \
-    flex \
-    bison \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      build-essential \
+      postgresql-server-dev-16 \
+      git \
+      ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Clone and compile Apache AGE from source using the verified PG16 release branch
-RUN git clone --branch release/PG16/1.5.0 --depth 1 https://github.com/apache/age.git /tmp/age \
-    && cd /tmp/age \
+# pgvector
+RUN git clone --branch v0.7.4 https://github.com/pgvector/pgvector.git /tmp/pgvector \
+    && cd /tmp/pgvector \
+    && make \
     && make install \
-    && cd / \
-    && rm -rf /tmp/age \
-    && apt-get purge -y build-essential postgresql-server-dev-16 git cmake flex bison \
-    && apt-get autoremove -y \
-    && apt-get clean
+    && rm -rf /tmp/pgvector
 
-# Bake the init script into the image so the container is self-initializing.
-# Required for testcontainers / standalone `docker run`; docker-compose also
-# mounts this same file, which simply takes precedence (no conflict).
-COPY init-db.sh /docker-entrypoint-initdb.d/init-db.sh
+# Apache AGE (matched to Postgres 16)
+RUN git clone --branch PG16/v1.5.0 https://github.com/apache/age.git /tmp/age \
+    && cd /tmp/age \
+    && make \
+    && make install \
+    && rm -rf /tmp/age
+
+COPY init-db.sh /docker-entrypoint-initdb.d/10-init-db.sh
+RUN chmod +x /docker-entrypoint-initdb.d/10-init-db.sh

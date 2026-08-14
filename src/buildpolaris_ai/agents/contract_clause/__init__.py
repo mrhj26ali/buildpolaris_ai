@@ -1,1 +1,0 @@
-﻿"""Contract clause extraction agent."""

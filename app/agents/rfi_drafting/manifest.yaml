@@ -1,0 +1,12 @@
+﻿agent_type: rfi_drafting
+display_name: "RFI Drafting Agent"
+description: >
+  Drafts a Request for Information from a plain-language description of a
+  field question or design conflict, citing the relevant drawing/spec
+  section where possible (REQ v2.1 M8 agent catalog).
+target_doctype: "RFI"
+intent_examples:
+  - "draft an rfi"
+  - "write an rfi about"
+  - "raise an rfi for"
+  - "create a request for information"

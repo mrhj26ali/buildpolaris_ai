@@ -1,44 +1,9 @@
-# Python-generated files
+﻿.venv/
 __pycache__/
-*.py[cod]
-*$py.class
-build/
-dist/
-wheels/
-*.egg-info/
-.eggs/
-
-# Virtual environments
-.venv/
-venv/
-env/
-
-# Environment variables (CRITICAL: Never commit secrets)
+*.pyc
 .env
-.env.local
-.env.*.local
-
-# IDEs and Editors
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# OS generated files
-.DS_Store
-Thumbs.db
-
-# Testing and Coverage
 .pytest_cache/
-htmlcov/
-.coverage
-
-# Logs
-*.log
-logs/
-
-# Note: uv.lock SHOULD be committed to ensure reproducible builds across the team
 .ruff_cache/
-buildpolaris_ai.txt
-notes/
+*.egg-info/
+dist/
+build/

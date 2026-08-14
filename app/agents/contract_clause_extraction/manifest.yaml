@@ -1,0 +1,13 @@
+﻿agent_type: contract_clause_extraction
+display_name: "Contract Clause Extraction Agent"
+description: >
+  Extracts key commercial terms (payment terms, retention, liquidated
+  damages, notice periods) from an indexed Commitment contract and
+  proposes them as structured Commitment fields (REQ v2.1 M8 agent
+  catalog). Never writes directly to Budget or Schedule â€” extraction
+  only, always human-reviewed.
+target_doctype: "Commitment"
+intent_examples:
+  - "extract contract terms"
+  - "pull the payment terms from"
+  - "what are the key terms in this contract"

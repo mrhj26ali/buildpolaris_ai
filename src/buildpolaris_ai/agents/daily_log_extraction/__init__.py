@@ -1,1 +1,0 @@
-﻿"""Daily log extraction agent."""

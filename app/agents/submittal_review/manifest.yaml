@@ -1,0 +1,11 @@
+﻿agent_type: submittal_review
+display_name: "Submittal Review Agent"
+description: >
+  Reviews a Submittal Package against the relevant spec section already
+  indexed for this project and proposes a review status + comments
+  (REQ v2.1 M8 agent catalog).
+target_doctype: "Submittal Item"
+intent_examples:
+  - "review this submittal"
+  - "check submittal against spec"
+  - "review the submittal package"

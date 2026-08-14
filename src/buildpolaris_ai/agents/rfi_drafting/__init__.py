@@ -1,1 +1,0 @@
-﻿"""RFI drafting agent plugin."""

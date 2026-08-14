@@ -1,0 +1,3 @@
+﻿{"question": "What is the retention percentage on the concrete subcontract?", "company": "dev-co", "project": "dev-project", "expected_sources": ["COMMIT-0001"]}
+{"question": "What is the notice period for a delay claim under the steel subcontract?", "company": "dev-co", "project": "dev-project", "expected_sources": ["COMMIT-0002"]}
+{"question": "Is there an open RFI about the elevator shaft clash?", "company": "dev-co", "project": "dev-project", "expected_sources": ["RFI-0004"]}

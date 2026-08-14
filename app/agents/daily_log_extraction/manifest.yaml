@@ -1,0 +1,11 @@
+﻿agent_type: daily_log_extraction
+display_name: "Daily Log Extraction Agent"
+description: >
+  Extracts structured Daily Log fields (weather, crew counts, work
+  performed, delays) from a superintendent's free-text field note
+  (REQ v2.1 M8 agent catalog).
+target_doctype: "Daily Log"
+intent_examples:
+  - "log today's work"
+  - "extract daily log from"
+  - "turn this note into a daily log"

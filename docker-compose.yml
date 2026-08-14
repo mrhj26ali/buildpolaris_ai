@@ -1,9 +1,10 @@
+﻿# Local dev stack for buildpolaris_ai in isolation from buildpolaris_bff.
+# Brings up Postgres (pgvector + Apache AGE) and the sidecar itself.
 services:
-  polaris-db:
+  db:
     build:
       context: .
       dockerfile: Dockerfile.db
-    container_name: polaris_ai_db
     environment:
       POSTGRES_USER: polaris_ai
       POSTGRES_PASSWORD: polaris_ai_dev_password
@@ -11,28 +12,34 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - polaris_db_data:/var/lib/postgresql/data
-      - ./init-db.sh:/docker-entrypoint-initdb.d/init-db.sh
+      - polaris_ai_pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U polaris_ai -d polaris_knowledge"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
 
-  polaris-redis:
+  redis:
     image: redis:7-alpine
-    container_name: polaris_ai_redis
     ports:
       - "6379:6379"
-    volumes:
-      - polaris_redis_data:/data
-    command: redis-server --appendonly yes
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+
+  ai:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    environment:
+      DATABASE__HOST: db
+      REDIS__URL: redis://redis:6379
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
 
 volumes:
-  polaris_db_data:
-  polaris_redis_data:
+  polaris_ai_pgdata:

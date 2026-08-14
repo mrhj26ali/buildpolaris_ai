@@ -1,0 +1,11 @@
+﻿# Template manifest â€” copy this folder, rename it, and fill in every field.
+# The orchestrator/agent_registry.py discovers any folder under app/agents/
+# with a manifest.yaml EXCEPT folders starting with "_" (this one is
+# intentionally excluded from registration).
+agent_type: template_agent
+display_name: "Template Agent"
+description: >
+  One sentence describing what this agent drafts and from what input.
+target_doctype: "SomeDocType"
+intent_examples:
+  - "example phrase a user might type that should route here"
