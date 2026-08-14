@@ -1,0 +1,13 @@
+﻿id: rfi_drafting
+name: RFI Drafting
+description: Drafts an RFI from a natural-language request and submits it for human approval.
+risk_tier: write_gated
+budget_class: standard
+model_preference: null
+module: buildpolaris_ai.agents.rfi_drafting.handler
+triggers:
+  - draft rfi
+  - create rfi
+  - write rfi
+  - rfi draft
+allowed_roles: []

@@ -1,22 +1,25 @@
-# src/buildpolaris_ai/main.py
-"""FastAPI application entry point for buildpolaris_ai.
-Handles dependency injection for the Hexagonal adapters."""
+﻿"""FastAPI application entry point for buildpolaris_ai."""
+from __future__ import annotations
+
 import logging
-import sys
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
-from uuid import uuid4
 
 import structlog
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
-from buildpolaris_ai.platform.bff_client import BFFClientProtocol
-from buildpolaris_ai.platform.bff_mock import MockBFFClient
-from buildpolaris_ai.platform.schemas import ActionApprovalGate, GateStatus, UserContext
-from buildpolaris_ai.gateway.api import llm_test
-from buildpolaris_ai.gateway.api import copilot_test
+from buildpolaris_ai.gateway.api import health
+from buildpolaris_ai.gateway.api.v1.router import v1_router
+from buildpolaris_ai.platform.errors import (
+    BuildPolarisError,
+    buildpolaris_exception_handler,
+    validation_exception_handler,
+    generic_exception_handler,
+)
+from fastapi.exceptions import RequestValidationError
 
-# Configure structlog for production-grade JSON logging
+# Configure structured logging
 structlog.configure(
     processors=[
         structlog.contextvars.merge_contextvars,
@@ -24,89 +27,65 @@ structlog.configure(
         structlog.processors.StackInfoRenderer(),
         structlog.dev.set_exc_info,
         structlog.processors.TimeStamper(fmt="iso"),
-        structlog.dev.ConsoleRenderer() # Use structlog.processors.JSONRenderer() in prod
+        structlog.dev.ConsoleRenderer(),
     ],
     wrapper_class=structlog.make_filtering_bound_logger(logging.INFO),
     context_class=dict,
     logger_factory=structlog.PrintLoggerFactory(),
-    cache_logger_on_first_use=False
+    cache_logger_on_first_use=False,
 )
+
 logger = structlog.get_logger()
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("buildpolaris_ai starting up...")
-    # Startup logic: init DB connections, load models, etc.
     yield
     logger.info("buildpolaris_ai shutting down...")
-    # Shutdown logic
+
 
 app = FastAPI(
     title="BuildPolaris AI Sidecar",
     description="Event-driven AI sidecar for the BuildPolaris Construction PM Platform",
-    version="0.1.0",
-    lifespan=lifespan
+    version="2.0.0",
+    lifespan=lifespan,
 )
 
-app.include_router(llm_test.router)
-app.include_router(copilot_test.router)
+# CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-# --- Dependency Injection ---
-# In production, this will return the real HttpBFFClient. 
-# For now, it returns the Mock. This is the ONLY place we change it.
-def get_bff_client() -> BFFClientProtocol:
-    # TODO: Swap to HttpBFFClient() when BFF is ready
-    return MockBFFClient()
+# Error handlers
+app.add_exception_handler(BuildPolarisError, buildpolaris_exception_handler)
+app.add_exception_handler(RequestValidationError, validation_exception_handler)
+app.add_exception_handler(Exception, generic_exception_handler)
 
-# --- Health Check ---
-@app.get("/health", tags=["System"])
-async def health_check():
-    return {"status": "healthy", "service": "buildpolaris_ai"}
+# Mount routes
+app.include_router(v1_router)
+app.include_router(health.router)
 
-# --- Gateway Endpoint (Test Contract) ---
-@app.post("/gateway/test-rfi-draft", tags=["Gateway"])
-async def test_rfi_draft(
-    bff_client: BFFClientProtocol = Depends(get_bff_client)
-):
-    """
-    Temporary endpoint to test the BFF client contract and approval gate flow.
-    Will be replaced by the actual LangGraph agent router.
-    """
-    # 1. Simulate User Context (Usually passed via JWT from PWA -> BFF -> AI)
-    user_ctx = UserContext(
-        user_id="user-123",
-        tenant_id="tenant-abc",
-        company_id="company-xyz",
-        assigned_project_ids=["proj-001"],
-        role="Project Manager"
-    )
 
-    # 2. Simulate Agent proposing a write action (Drafting an RFI)
-    proposed_gate = ActionApprovalGate(
-        ref_doctype="RFI",
-        proposed_payload={
-            "subject": "Clarification on concrete mix design",
-            "cost_impact": False,
-            "schedule_impact": True
-        },
-        model_version="claude-3-5-sonnet-20260801",
-        confidence_score=0.92,
-        tool_trace_id=str(uuid4())
-    )
-
-    # 3. Submit to BFF (Mock)
-    gate_id = await bff_client.submit_approval_gate(proposed_gate, user_ctx)
-    
-    # 4. Check status (Mock auto-approves for dev flow)
-    status = await bff_client.check_gate_status(gate_id)
-    
-    # 5. Execute if approved
-    result = {}
-    if status == GateStatus.APPROVED:
-        result = await bff_client.execute_approved_gate(gate_id)
-
+@app.get("/", tags=["System"])
+async def root():
     return {
-        "gate_id": gate_id,
-        "status": status.value,
-        "execution_result": result
+        "service": "buildpolaris_ai",
+        "status": "running",
+        "version": "2.0.0",
+        "phase": "Full Implementation — RAG Fusion + Multi-Agent + Free LLM APIs",
     }
+
+
+def run():
+    """Entry point for `buildpolaris-ai` CLI command."""
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8001)
+
+
+if __name__ == "__main__":
+    run()
