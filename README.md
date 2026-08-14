@@ -72,7 +72,7 @@ buildpolaris_ai/
 │
 ├── scripts/                     # embed_seed_data, seed_mock_data, test_rag, verify_gemini, ...
 │
-└── src/buildpolaris_ai/
+└── src/
     ├── main.py
     │
     ├── app/
