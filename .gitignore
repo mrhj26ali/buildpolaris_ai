@@ -40,3 +40,5 @@ logs/
 
 # Note: uv.lock SHOULD be committed to ensure reproducible builds across the team
 .ruff_cache/
+buildpolaris_ai.txt
+notes/

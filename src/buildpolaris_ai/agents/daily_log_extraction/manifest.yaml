@@ -1,0 +1,15 @@
+﻿id: daily_log_extraction
+name: Daily Log Extraction
+description: Extracts structured fields from speech/text for Daily Log entry.
+risk_tier: write_gated
+budget_class: standard
+model_preference: null
+module: buildpolaris_ai.agents.daily_log_extraction.handler
+triggers:
+  - extract daily log
+  - parse daily log
+  - log extraction
+  - voice to log
+allowed_roles:
+  - BuildPolaris Site Superintendent
+  - BuildPolaris Safety Officer

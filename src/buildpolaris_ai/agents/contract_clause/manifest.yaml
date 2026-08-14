@@ -1,0 +1,15 @@
+﻿id: contract_clause_extraction
+name: Contract Clause Extraction
+description: Scans contracts, classifies clauses, assigns risk flags (FR-8.8, UC-8.7).
+risk_tier: write_gated
+budget_class: standard
+model_preference: null
+module: buildpolaris_ai.agents.contract_clause.handler
+triggers:
+  - scan contract
+  - extract clauses
+  - contract review
+  - clause extraction
+allowed_roles:
+  - BuildPolaris Project Manager
+  - BuildPolaris Document Controller

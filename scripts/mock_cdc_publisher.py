@@ -1,31 +1,30 @@
-# scripts/mock_cdc_publisher.py
+﻿"""Publishes mock CDC events to Redis Stream for testing."""
 import asyncio
 import json
+
 import asyncpg
 import redis.asyncio as redis
+
 from buildpolaris_ai.platform.config import get_settings
 
 
 async def main():
-    print("Starting Mock CDC Publisher (Simulating BFF)...")
+    print("Starting Mock CDC Publisher...")
     settings = get_settings()
     pg_conn = await asyncpg.connect(**settings.database.connect_kwargs())
     r = redis.from_url(settings.redis.url, decode_responses=True)
 
-    # Clear the stream to ensure a clean test run
-    await r.delete("cdc_events")
-    print("Cleared 'cdc_events' Redis Stream.")
+    await r.delete("bp.cdc.events")
+    print("Cleared 'bp.cdc.events' Redis Stream.")
 
     try:
         rows = await pg_conn.fetch(
-            "SELECT id, tenant_id, doctype, docname, payload FROM mock_erpnext_docs"
+            "SELECT id, tenant_id, doctype, docname, payload FROM mock_erpnext_docs LIMIT 20"
         )
-        print(f"Found {len(rows)} documents to publish to the event bus.")
+        print(f"Publishing {len(rows)} events...")
 
         for row in rows:
             payload = row['payload']
-            # asyncpg returns jsonb as a JSON string by default. Normalize to a
-            # dict BEFORE serializing so we never double-encode the payload.
             if isinstance(payload, str):
                 payload = json.loads(payload)
 
@@ -35,11 +34,11 @@ async def main():
                 "event_type": "created",
                 "doctype": row['doctype'],
                 "docname": row['docname'],
-                "payload": json.dumps(payload),
+                "payload": json.dumps(payload, default=str),
             }
-            await r.xadd("cdc_events", event)
+            await r.xadd("bp.cdc.events", event)
 
-        print(f"Successfully published {len(rows)} events to Redis Stream 'cdc_events'.")
+        print(f"Published {len(rows)} events.")
     finally:
         await pg_conn.close()
         await r.aclose()
