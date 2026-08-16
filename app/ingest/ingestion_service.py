@@ -1,12 +1,12 @@
-﻿"""IngestionService â€” ARCH Flowchart 5, steps H onward (this sidecar's
+﻿"""IngestionService Ã¢â‚¬â€ ARCH Flowchart 5, steps H onward (this sidecar's
 side of the pipeline; steps B-D, the allow-list check and the
 already-indexed-with-same-hash short-circuit, happen BFF-side against
 MariaDB's AI Document Index before this service is ever called).
 
-Architecturally isolated per ARCH Â§3.3: no dependency on
+Architecturally isolated per ARCH Ã‚Â§3.3: no dependency on
 orchestrator/agent_registry, no dependency on RagService. Triggered
 exclusively by gateway/routers/ingest.py handling a signed POST /ingest
-call â€” never on its own initiative, never on a schedule (UC-8.4's own
+call Ã¢â‚¬â€ never on its own initiative, never on a schedule (UC-8.4's own
 non-goal list).
 """
 from __future__ import annotations
@@ -30,6 +30,15 @@ logger = get_logger(__name__)
 _CLAUSE_CHUNKED_DOCTYPES = {"Commitment"}
 
 
+def _guess_content_type(file_name: str) -> str:
+    lower = file_name.lower()
+    if lower.endswith(".pdf"):
+        return "application/pdf"
+    if lower.endswith(".docx"):
+        return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    return "text/plain"
+
+
 class IngestionService:
     def __init__(
         self, vector_store: VectorStoreAdapter, embedder: Embedder, conn: asyncpg.Connection,
@@ -38,9 +47,9 @@ class IngestionService:
         self._embedder = embedder
         self._conn = conn
 
-    async def ingest(self, request: IngestRequest) -> IngestResult:
+    async def ingest(self, request: IngestRequest) -> IngestResult:  # noqa: C901
         # Sidecar-side idempotency belt-and-suspenders on top of the BFF's
-        # own AI Document Index hash check (Flowchart 5 step D) â€” a
+        # own AI Document Index hash check (Flowchart 5 step D) Ã¢â‚¬â€ a
         # duplicate call for content already indexed here is a no-op, not
         # a re-embed.
         already_indexed = await self._conn.fetchval(
@@ -53,20 +62,20 @@ class IngestionService:
                 "SELECT count(*) FROM document_chunks WHERE content_hash = $1", request.content_hash
             )
             return IngestResult(
-                status="indexed", chunk_count=existing_count, model_version=self._embedder.model_version
+                status="Indexed", chunk_count=existing_count, model_version=self._embedder.model_version
             )
 
         try:
-            raw_bytes, content_type = await self._download(request.signed_download_url)
-            text_or_pages = self._extract_text(raw_bytes, content_type, request.file_id)
+            raw_bytes, content_type = await self._obtain_content(request)
+            text_or_pages = self._extract_text(raw_bytes, content_type, request.file_name or request.file_id)
         except NoExtractableTextError as exc:
             counters.increment(INGESTION_FAILED_TOTAL)
             logger.warning(
                 "ingest_no_extractable_text", file_id=request.file_id, reason=exc.reason
             )
-            return IngestResult(status="failed", failure_reason=exc.reason)
+            return IngestResult(status="Failed", failure_reason=exc.reason, status_detail=exc.reason)
 
-        # UC-8.4 A1 â€” mark any prior chunks for this source stale ahead of
+        # UC-8.4 A1 Ã¢â‚¬â€ mark any prior chunks for this source stale ahead of
         # re-ingest, never hard-deleting mid-query.
         await self._vector_store.mark_stale(
             request.company, request.source_doctype, request.source_name
@@ -87,8 +96,21 @@ class IngestionService:
 
         counters.increment(INGESTION_SUCCEEDED_TOTAL)
         return IngestResult(
-            status="indexed", chunk_count=chunk_count, model_version=self._embedder.model_version
+            status="Indexed", chunk_count=chunk_count, model_version=self._embedder.model_version
         )
+
+    async def _obtain_content(self, request: IngestRequest) -> tuple[bytes, str]:
+        """Prefers the inline base64 payload BFF actually sends
+        (ingestion_trigger_service.py's documented "one fewer moving
+        part" design); falls back to a signed-URL fetch for any future
+        caller that supplies one instead."""
+        if request.content_b64:
+            import base64
+
+            raw = base64.b64decode(request.content_b64)
+            content_type = _guess_content_type(request.file_name or request.file_id)
+            return raw, content_type
+        return await self._download(request.signed_download_url)  # type: ignore[arg-type]
 
     async def _download(self, signed_url: str) -> tuple[bytes, str]:
         async with httpx.AsyncClient(timeout=60.0) as client:

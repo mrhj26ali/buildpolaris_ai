@@ -17,6 +17,21 @@ HMAC-SHA256 signed, symmetric secret shared with the BFF
 (SERVICE_AUTH__SCOPE_ASSERTION_SECRET on both sides) â€” both services are
 first-party and internal-network-only (ARCH Â§4.4), so asymmetric signing
 isn't earning its complexity here.
+
+WIRE FORMAT (must match buildpolaris_bff/shared/scope_assertion.py
+EXACTLY â€” that module is the reference implementation):
+
+    token = base64url(json_bytes) + "." + base64url(hmac_sha256(secret, json_bytes))
+
+The signature is computed over the RAW JSON BYTES, before base64
+encoding â€” NOT over the base64-encoded string. Signing the base64 string
+instead of the underlying bytes is a distinct (and incompatible) byte
+sequence; a previous version of this file made exactly that mistake and
+every assertion minted by the BFF failed verification here as a result.
+
+Role: the BFF mints `role` as the full list of the asserted user's Frappe
+Roles (`frappe.get_roles(user)`), not a single string â€” this module
+mirrors that as `role: list[str]`.
 """
 from __future__ import annotations
 
@@ -35,14 +50,17 @@ from app.exceptions import InvalidScopeAssertionError
 
 @dataclass(slots=True, frozen=True)
 class ScopeAssertion:
-    company: str
+    company: str | None
     project: str | None
     user: str
-    role: str
+    role: list[str]
     expires_at: int
 
     def is_expired(self) -> bool:
         return time.time() >= self.expires_at
+
+    def has_role(self, *roles: str) -> bool:
+        return any(r in self.role for r in roles)
 
 
 def _b64url_decode(data: str) -> bytes:
@@ -55,46 +73,57 @@ def _b64url_encode(data: bytes) -> str:
 
 
 def mint_scope_assertion(
-    company: str, project: str | None, user: str, role: str, ttl_seconds: int | None = None
+    company: str | None, project: str | None, user: str, role: list[str] | str,
+    ttl_seconds: int | None = None,
 ) -> str:
-    """Used by tests/dev tooling and by BFF-side mirrors of this module.
-    Production Scope Assertions are minted by buildpolaris_bff, but the
-    sidecar carries this so its own test suite and local dev scripts don't
-    need a live BFF just to exercise an authenticated call chain."""
+    """Used by tests/dev tooling only. Production Scope Assertions are
+    minted by buildpolaris_bff (buildpolaris_bff/shared/scope_assertion.py);
+    this sidecar carries a mirror so its own test suite and local dev
+    scripts don't need a live BFF just to exercise an authenticated call
+    chain. MUST stay byte-for-byte compatible with the BFF's minter."""
     settings = get_settings().service_auth
     ttl = ttl_seconds or settings.scope_assertion_max_ttl_seconds
+    role_list = [role] if isinstance(role, str) else list(role)
     payload = {
         "company": company,
         "project": project,
         "user": user,
-        "role": role,
+        "role": role_list,
         "expires_at": int(time.time()) + ttl,
     }
-    body = _b64url_encode(json.dumps(payload, separators=(",", ":")).encode())
+    # Sign the RAW JSON BYTES (sort_keys to match BFF's json.dumps(..., sort_keys=True)).
+    body_bytes = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
     secret = settings.scope_assertion_secret.get_secret_value().encode()
-    signature = _b64url_encode(hmac.new(secret, body.encode(), hashlib.sha256).digest())
-    return f"{body}.{signature}"
+    signature = hmac.new(secret, body_bytes, hashlib.sha256).digest()
+    return f"{_b64url_encode(body_bytes)}.{_b64url_encode(signature)}"
 
 
-def verify_scope_assertion(x_scope_assertion: str = Header(...)) -> ScopeAssertion:
+def _verify(token: str) -> ScopeAssertion:
     settings = get_settings().service_auth
     try:
-        body, signature = x_scope_assertion.split(".", 1)
-    except ValueError as exc:
+        body_b64, sig_b64 = token.split(".", 1)
+        body_bytes = _b64url_decode(body_b64)
+        signature = _b64url_decode(sig_b64)
+    except Exception as exc:
         raise InvalidScopeAssertionError("malformed scope assertion") from exc
 
     secret = settings.scope_assertion_secret.get_secret_value().encode()
-    expected_sig = _b64url_encode(hmac.new(secret, body.encode(), hashlib.sha256).digest())
+    # Verify over the RAW JSON BYTES â€” same bytes the BFF signed, not the
+    # base64 string. This is the line that was previously wrong.
+    expected_sig = hmac.new(secret, body_bytes, hashlib.sha256).digest()
     if not hmac.compare_digest(signature, expected_sig):
         raise InvalidScopeAssertionError("scope assertion signature mismatch")
 
     try:
-        payload = json.loads(_b64url_decode(body))
+        payload = json.loads(body_bytes)
+        role = payload.get("role") or []
+        if isinstance(role, str):
+            role = [role]
         assertion = ScopeAssertion(
-            company=payload["company"],
+            company=payload.get("company"),
             project=payload.get("project"),
             user=payload["user"],
-            role=payload["role"],
+            role=role,
             expires_at=int(payload["expires_at"]),
         )
     except (KeyError, ValueError, json.JSONDecodeError) as exc:
@@ -106,7 +135,21 @@ def verify_scope_assertion(x_scope_assertion: str = Header(...)) -> ScopeAsserti
     # Defensive belt-and-suspenders on top of the TTL embedded in the
     # payload: never trust an assertion whose *issued* lifetime exceeds
     # the sidecar's own configured max, even if the signature is valid.
-    if assertion.expires_at - int(time.time()) > settings.scope_assertion_max_ttl_seconds:
+    if assertion.expires_at - int(time.time()) > settings.scope_assertion_max_ttl_seconds + 5:
         raise InvalidScopeAssertionError("scope assertion TTL exceeds configured maximum")
 
     return assertion
+
+
+def verify_scope_assertion(x_scope_assertion: str = Header(...)) -> ScopeAssertion:
+    """FastAPI dependency â€” reads the assertion from the X-Scope-Assertion
+    header, used by every inbound router (copilot_message, ingest,
+    graph_sync)."""
+    return _verify(x_scope_assertion)
+
+
+def verify_scope_assertion_str(token: str) -> ScopeAssertion:
+    """Same verification, callable directly with a raw token string â€”
+    kept for symmetry/testing where the assertion isn't sourced from a
+    FastAPI Header dependency."""
+    return _verify(token)

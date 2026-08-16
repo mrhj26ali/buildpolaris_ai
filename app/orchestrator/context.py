@@ -1,4 +1,4 @@
-﻿"""TurnContext â€” everything an agent or the RAG path needs for one
+﻿"""TurnContext Ã¢â‚¬â€ everything an agent or the RAG path needs for one
 copilot turn, threaded through explicitly rather than via globals so
 concurrent turns (different tenants, different users) never leak state
 into each other.
@@ -14,7 +14,7 @@ from app.platform.model_provider.adapter import ModelProviderAdapter
 
 @dataclass(slots=True)
 class TurnContext:
-    thread_id: str
+    thread_id: str | None
     message: str
     history: list[dict]
     assertion: ScopeAssertion

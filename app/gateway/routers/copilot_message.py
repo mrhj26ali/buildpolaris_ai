@@ -1,5 +1,5 @@
-﻿"""POST /copilot/message â€” the one conversational copilot surface
-(ARCH Flowchart 4). Streams via SSE (ARCH Â§4.5) so the PWA/BFF proxy
+﻿"""POST /copilot/message Ã¢â‚¬â€ the one conversational copilot surface
+(ARCH Flowchart 4). Streams via SSE (ARCH Ã‚Â§4.5) so the PWA/BFF proxy
 never buffers a full response before the user sees anything.
 """
 from __future__ import annotations
@@ -70,7 +70,7 @@ async def post_message(
     assertion: ScopeAssertion = Depends(verify_scope_assertion),
     registry: AgentRegistry = Depends(get_agent_registry),
 ):
-    """Streams disclosure -> tokens/citations -> done, per ARCH Â§4.5.
+    """Streams disclosure -> tokens/citations -> done, per ARCH Ã‚Â§4.5.
     Non-streaming callers can simply read the final 'done' event's payload
     (it carries the same shape as CopilotResponse).
     """
@@ -84,7 +84,7 @@ async def post_message(
             mcp_client = BFFMCPClient(assertion, x_scope_assertion)
 
             context = TurnContext(
-                thread_id=body.thread_id, message=body.message,
+                thread_id=body.thread_id, message=body.text,
                 history=[h.model_dump() for h in body.history],
                 assertion=assertion, raw_assertion_token=x_scope_assertion,
                 trace_id=trace_id, model_provider=provider, mcp_client=mcp_client,
@@ -115,7 +115,7 @@ async def post_message(
 
             if response.text:
                 # Token-level streaming of a fully-generated answer still
-                # gives the "reads as alive, not hung" UX Â§4.5 asks for,
+                # gives the "reads as alive, not hung" UX Ã‚Â§4.5 asks for,
                 # without needing the model provider's own token stream
                 # wired through every provider adapter in v1.
                 for chunk in _chunk_text(response.text):
