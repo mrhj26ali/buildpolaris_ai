@@ -208,4 +208,4 @@ uvicorn app.main:app --reload
 ```
 
 Never expose this service publicly â€” it is reachable only from
-`buildpolaris_bff` on a private network segment (ARCH v2.1 Â§4.2).
+`buildpolaris_bff` on a private network segment .
