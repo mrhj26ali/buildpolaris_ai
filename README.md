@@ -207,5 +207,5 @@ python scripts/seed_eval_data.py      # optional: local dev corpus
 uvicorn app.main:app --reload
 ```
 
-Never expose this service publicly â€” it is reachable only from
+Never expose this service publicly  it is reachable only from
 `buildpolaris_bff` on a private network segment .
