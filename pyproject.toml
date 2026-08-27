@@ -1,4 +1,4 @@
-﻿[project]
+[project]
 name = "buildpolaris-ai"
 version = "2.1.0"
 description = "BuildPolaris AI sidecar â€” hexagonal microkernel over a derived retrieval platform (ARCH v2.1 Â§3.3, Â§6.3)"

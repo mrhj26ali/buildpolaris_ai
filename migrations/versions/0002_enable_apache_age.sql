@@ -1,4 +1,4 @@
-﻿-- ARCH v2.1 Â§6.3 / ERD v2.1 Â§4.3 â€” Apache AGE knowledge graph.
+-- ARCH v2.1 Â§6.3 / ERD v2.1 Â§4.3 â€” Apache AGE knowledge graph.
 CREATE EXTENSION IF NOT EXISTS age;
 LOAD 'age';
 SET search_path = ag_catalog, "$user", public;

@@ -1,4 +1,4 @@
-﻿-- Graph node bookkeeping lives relationally alongside the AGE graph itself
+-- Graph node bookkeeping lives relationally alongside the AGE graph itself
 -- so entity-mirror idempotency (0007's graph_sync_cursor) and ordinary SQL
 -- reporting don't require a Cypher round-trip for simple existence checks.
 -- The AGE graph (0002) remains the actual traversal store used by

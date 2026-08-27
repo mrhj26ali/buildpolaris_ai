@@ -24,13 +24,13 @@ EXACTLY â€” that module is the reference implementation):
     token = base64url(json_bytes) + "." + base64url(hmac_sha256(secret, json_bytes))
 
 The signature is computed over the RAW JSON BYTES, before base64
-encoding â€” NOT over the base64-encoded string. Signing the base64 string
+encoding  NOT over the base64-encoded string. Signing the base64 string
 instead of the underlying bytes is a distinct (and incompatible) byte
 sequence; a previous version of this file made exactly that mistake and
 every assertion minted by the BFF failed verification here as a result.
 
 Role: the BFF mints `role` as the full list of the asserted user's Frappe
-Roles (`frappe.get_roles(user)`), not a single string â€” this module
+Roles (`frappe.get_roles(user)`), not a single string ” this module
 mirrors that as `role: list[str]`.
 """
 from __future__ import annotations

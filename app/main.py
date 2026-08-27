@@ -1,4 +1,4 @@
-﻿"""buildpolaris_ai â€” FastAPI sidecar entrypoint.
+﻿"""buildpolaris_ai  FastAPI sidecar entrypoint.
 
 Wires: middleware stack (request logging -> timeout -> circuit breaker),
 every gateway router, exception handlers mapping every app.exceptions
@@ -59,7 +59,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="buildpolaris_ai",
-    description="BuildPolaris AI sidecar â€” hexagonal microkernel over a derived retrieval platform.",
+    description="BuildPolaris AI sidecar ” hexagonal microkernel over a derived retrieval platform.",
     version="2.1.0",
     lifespan=lifespan,
 )

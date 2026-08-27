@@ -1,4 +1,4 @@
-﻿-- Sidecar-local run/audit tables. These are NOT the authority for approval
+-- Sidecar-local run/audit tables. These are NOT the authority for approval
 -- decisions (that record is 'Agent Action Approval' in BFF's MariaDB, ERD
 -- Â§3.6) â€” these exist so buildpolaris_ai can reconstruct its own eval
 -- metrics (citation accuracy, grounding score) and the entity-mirror

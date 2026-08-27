@@ -1,4 +1,4 @@
-﻿-- ERD v2.1 Â§4.2 â€” text/provenance half of the retrieval unit. Split from
+-- ERD v2.1 Â§4.2 â€” text/provenance half of the retrieval unit. Split from
 -- the embedding vector (0004) so a re-embed for a new model version never
 -- requires re-parsing/re-chunking the source document (NFR-AIGOV.2).
 CREATE TABLE IF NOT EXISTS document_chunks (

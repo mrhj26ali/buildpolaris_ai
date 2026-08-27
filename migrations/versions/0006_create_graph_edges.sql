@@ -1,4 +1,4 @@
-﻿-- Relational mirror of AGE edges, same rationale as 0005.
+-- Relational mirror of AGE edges, same rationale as 0005.
 CREATE TABLE IF NOT EXISTS graph_edge_index (
     edge_key        TEXT PRIMARY KEY,   -- '{edge_type}:{from_node_key}->{to_node_key}'
     edge_type       TEXT NOT NULL,      -- HAS_TASK | DEPENDS_ON | ASSIGNED_TO | RAISED_AGAINST | COMMITTED_TO | HAS_INCIDENT

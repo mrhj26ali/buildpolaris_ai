@@ -1,4 +1,4 @@
-﻿-- ERD v2.1 Â§4.2 â€” the vector half. embedding dimension is pinned per
+-- ERD v2.1 Â§4.2 â€” the vector half. embedding dimension is pinned per
 -- ERD Â§8.1 (open decision #1) to the sentence-transformers all-MiniLM-L6-v2
 -- default (384-dim, free/local). Changing it is a documented backfill, not
 -- a silent migration (ERD Â§7).
